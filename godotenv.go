@@ -20,13 +20,18 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-const doubleQuoteSpecialChars = "\\\n\r\"!$`"
+const (
+	doubleQuoteSpecialChars = "\\\n\r\"!$`"
+	OptionalKey             = "optional"
+	DefaultKey              = "default"
+)
 
 // Load will read your env file(s) and load them into ENV for this process.
 //
@@ -49,6 +54,56 @@ func Load(filenames ...string) (err error) {
 		}
 	}
 	return
+}
+
+// LoadStruct uses default Load to get envs and them load vars into struct pointer
+func LoadStruct(envStruct interface{}, filenames ...string) (err error) {
+	if err = Load(filenames...); err != nil {
+		return err
+	}
+
+	pointr := reflect.ValueOf(envStruct)
+	values := pointr.Elem()
+	typeOfValues := values.Type()
+
+	for i := 0; i < values.NumField(); i++ {
+		value := values.Field(i).String()
+		field := pointr.Elem().Field(i)
+		fieldName := typeOfValues.Field(i).Name
+
+		fieldKey := fieldName
+		optional := false
+		defaultValue := ""
+
+		tag := typeOfValues.Field(i).Tag.Get("env")
+		if tag != "" {
+			tagOpts := strings.Split(tag, ",")
+			fieldKey = tagOpts[0]
+			keys := tagOpts[1:]
+			for _, key := range keys {
+				if key == OptionalKey {
+					optional = true
+				} else if strings.Index(key, DefaultKey+"=") == 0 && value == "" {
+					opts := strings.Split(key, "=")
+					defaultValue = opts[1]
+				}
+			}
+		}
+
+		if field.CanSet() && value == "" {
+			field.SetString(os.Getenv(fieldKey))
+
+			if field.String() == "" {
+				field.SetString(defaultValue)
+			}
+		}
+
+		if !optional && field.String() == "" {
+			return fmt.Errorf(`env "%s", fieldname "%s" must be defined`, fieldKey, fieldName)
+		}
+	}
+
+	return nil
 }
 
 // Overload will read your env file(s) and load them into ENV for this process.
