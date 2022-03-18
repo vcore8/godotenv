@@ -58,10 +58,6 @@ func Load(filenames ...string) (err error) {
 
 // LoadStruct uses default Load to get envs and them load vars into struct pointer
 func LoadStruct(envStruct interface{}, filenames ...string) (err error) {
-	if err = Load(filenames...); err != nil {
-		return err
-	}
-
 	pointr := reflect.ValueOf(envStruct)
 	values := pointr.Elem()
 	typeOfValues := values.Type()
